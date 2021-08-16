@@ -1,0 +1,398 @@
+diff --git a/config.def.h b/config.def.h
+index a2ac963..5e7ca5b 100644
+--- a/config.def.h
++++ b/config.def.h
+@@ -44,13 +44,14 @@ static const Layout layouts[] = {
+ 	{ "[M]",      monocle },
+ };
+ 
++#include "tags.c"
++
+ /* key definitions */
+ #define MODKEY Mod1Mask
+ #define TAGKEYS(KEY,TAG) \
+-	{ MODKEY,                       KEY,      view,           {.ui = 1 << TAG} }, \
+-	{ MODKEY|ControlMask,           KEY,      toggleview,     {.ui = 1 << TAG} }, \
+-	{ MODKEY|ShiftMask,             KEY,      tag,            {.ui = 1 << TAG} }, \
+-	{ MODKEY|ControlMask|ShiftMask, KEY,      toggletag,      {.ui = 1 << TAG} },
++	{ MODKEY,                       KEY,      view,           {.ui = TAG} }, \
++	{ MODKEY|ShiftMask,             KEY,      tag,            {.ui = TAG} }, \
++	{ MODKEY|ControlMask,           KEY,      viewtag,        {.ui = TAG} }, 
+ 
+ /* helper for spawning shell commands in the pre dwm-5.0 fashion */
+ #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
+@@ -95,6 +96,15 @@ static Key keys[] = {
+ 	TAGKEYS(                        XK_8,                      7)
+ 	TAGKEYS(                        XK_9,                      8)
+ 	{ MODKEY|ShiftMask,             XK_q,      quit,           {0} },
++	// Relative controls
++	{ MODKEY,                       XK_s,      relativeview,   {.i = +1} },
++	{ MODKEY,                       XK_a,      relativeview,   {.i = -1} },
++	{ MODKEY|ShiftMask,             XK_s,      relativemoveview,   {.i = +1} },
++	{ MODKEY|ShiftMask,             XK_a,      relativemoveview,   {.i = -1} },
++	{ MODKEY|ShiftMask,             XK_x,      relativemove,   {.i = +1} },
++	// Different keyboard layouts
++	{ MODKEY|ShiftMask,             XK_y,      relativemove,   {.i = -1} }, 
++	{ MODKEY|ShiftMask,             XK_z,      relativemove,   {.i = -1} },
+ };
+ 
+ /* button definitions */
+diff --git a/dwm.c b/dwm.c
+index 5e4d494..97b1e6d 100644
+--- a/dwm.c
++++ b/dwm.c
+@@ -124,6 +124,7 @@ struct Monitor {
+ 	unsigned int tagset[2];
+ 	int showbar;
+ 	int topbar;
++	int selectedtag;
+ 	Client *clients;
+ 	Client *sel;
+ 	Client *stack;
+@@ -639,6 +640,7 @@ createmon(void)
+ 	m->nmaster = nmaster;
+ 	m->showbar = showbar;
+ 	m->topbar = topbar;
++	m->selectedtag = 1;
+ 	m->lt[0] = &layouts[0];
+ 	m->lt[1] = &layouts[1 % LENGTH(layouts)];
+ 	strncpy(m->ltsymbol, layouts[0].symbol, sizeof m->ltsymbol);
+@@ -1653,16 +1655,17 @@ spawn(const Arg *arg)
+ 	}
+ }
+ 
+-void
+-tag(const Arg *arg)
+-{
+-	if (selmon->sel && arg->ui & TAGMASK) {
+-		selmon->sel->tags = arg->ui & TAGMASK;
+-		focus(NULL);
+-		arrange(selmon);
+-	}
++void 
++tag(const Arg *arg) {
++  int endtag = 1 << arg->ui;
++  if (selmon->sel && endtag & TAGMASK) {
++    selmon->sel->tags = endtag & TAGMASK;
++    focus(NULL);
++    arrange(selmon);
++  }
+ }
+ 
++
+ void
+ tagmon(const Arg *arg)
+ {
+@@ -2035,16 +2038,18 @@ updatewmhints(Client *c)
+ 	}
+ }
+ 
++
+ void
+-view(const Arg *arg)
+-{
+-	if ((arg->ui & TAGMASK) == selmon->tagset[selmon->seltags])
+-		return;
+-	selmon->seltags ^= 1; /* toggle sel tagset */
+-	if (arg->ui & TAGMASK)
+-		selmon->tagset[selmon->seltags] = arg->ui & TAGMASK;
+-	focus(NULL);
+-	arrange(selmon);
++view(const Arg *arg) {
++  int endtag = 1 << arg->ui;
++  if ((endtag & TAGMASK) == selmon->tagset[selmon->seltags])
++    return;
++  selmon->seltags ^= 1; /* toggle sel tagset */
++  if (endtag & TAGMASK)
++    selmon->tagset[selmon->seltags] = endtag & TAGMASK;
++  selmon->selectedtag = arg->ui;
++  focus(NULL);
++  arrange(selmon);
+ }
+ 
+ Client *
+diff --git a/tags.c b/tags.c
+new file mode 100644
+index 0000000..78b7b20
+--- /dev/null
++++ b/tags.c
+@@ -0,0 +1,52 @@
++void relativemove(const Arg *arg) {
++  if (selmon->sel && arg->i) {
++    int endtag = selmon->selectedtag + arg->i;
++    if (endtag < 0 || endtag > LENGTH(tags) - 1)
++      return;
++    selmon->sel->tags = 1 << endtag;
++    focus(NULL);
++    arrange(selmon);
++  }
++}
++
++void relativeview(const Arg *arg) {
++  int newmon = selmon->selectedtag + arg->i;
++  if (newmon < 0 || newmon > LENGTH(tags) - 1)
++    return;
++  int endtag = 1 << newmon;
++  if ((endtag & TAGMASK) == selmon->tagset[selmon->seltags])
++    return;
++  selmon->seltags ^= 1;
++  if (endtag & TAGMASK)
++    selmon->tagset[selmon->seltags] = endtag & TAGMASK;
++  selmon->selectedtag = newmon;
++  focus(NULL);
++  arrange(selmon);
++}
++
++void relativemoveview(const Arg *arg) {
++  if (selmon->sel && arg->i) {
++    int endtag = selmon->selectedtag + arg->i;
++    if (endtag < 0 || endtag > LENGTH(tags) - 1)
++      return;
++    selmon->sel->tags = 1 << endtag;
++  }
++  int newmon = selmon->selectedtag + arg->i;
++  int endtag = 1 << newmon;
++  if (endtag & TAGMASK)
++    selmon->tagset[selmon->seltags] = endtag & TAGMASK;
++  selmon->selectedtag = newmon;
++  focus(NULL);
++  arrange(selmon);
++}
++
++void viewtag(const Arg *arg) {
++  int endtag = 1 << arg->ui;
++  if (selmon->sel && endtag) {
++    selmon->sel->tags = endtag & TAGMASK;
++    selmon->selectedtag = arg->ui;
++    focus(NULL);
++    view(arg);
++    arrange(selmon);
++  }
++}
+\ No newline at end of file
+diff --git a/README b/README
+deleted file mode 100644
+index 95d4fd0..0000000
+--- a/README
++++ /dev/null
+@@ -1,48 +0,0 @@
+-dwm - dynamic window manager
+-============================
+-dwm is an extremely fast, small, and dynamic window manager for X.
+-
+-
+-Requirements
+-------------
+-In order to build dwm you need the Xlib header files.
+-
+-
+-Installation
+-------------
+-Edit config.mk to match your local setup (dwm is installed into
+-the /usr/local namespace by default).
+-
+-Afterwards enter the following command to build and install dwm (if
+-necessary as root):
+-
+-    make clean install
+-
+-
+-Running dwm
+------------
+-Add the following line to your .xinitrc to start dwm using startx:
+-
+-    exec dwm
+-
+-In order to connect dwm to a specific display, make sure that
+-the DISPLAY environment variable is set correctly, e.g.:
+-
+-    DISPLAY=foo.bar:1 exec dwm
+-
+-(This will start dwm on display :1 of the host foo.bar.)
+-
+-In order to display status info in the bar, you can do something
+-like this in your .xinitrc:
+-
+-    while xsetroot -name "`date` `uptime | sed 's/.*,//'`"
+-    do
+-    	sleep 1
+-    done &
+-    exec dwm
+-
+-
+-Configuration
+--------------
+-The configuration of dwm is done by creating a custom config.h
+-and (re)compiling the source code.
+diff --git a/config.def.h b/config.def.h
+index a2ac963..5e7ca5b 100644
+--- a/config.def.h
++++ b/config.def.h
+@@ -44,13 +44,14 @@ static const Layout layouts[] = {
+ 	{ "[M]",      monocle },
+ };
+ 
++#include "tags.c"
++
+ /* key definitions */
+ #define MODKEY Mod1Mask
+ #define TAGKEYS(KEY,TAG) \
+-	{ MODKEY,                       KEY,      view,           {.ui = 1 << TAG} }, \
+-	{ MODKEY|ControlMask,           KEY,      toggleview,     {.ui = 1 << TAG} }, \
+-	{ MODKEY|ShiftMask,             KEY,      tag,            {.ui = 1 << TAG} }, \
+-	{ MODKEY|ControlMask|ShiftMask, KEY,      toggletag,      {.ui = 1 << TAG} },
++	{ MODKEY,                       KEY,      view,           {.ui = TAG} }, \
++	{ MODKEY|ShiftMask,             KEY,      tag,            {.ui = TAG} }, \
++	{ MODKEY|ControlMask,           KEY,      viewtag,        {.ui = TAG} }, 
+ 
+ /* helper for spawning shell commands in the pre dwm-5.0 fashion */
+ #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
+@@ -95,6 +96,15 @@ static Key keys[] = {
+ 	TAGKEYS(                        XK_8,                      7)
+ 	TAGKEYS(                        XK_9,                      8)
+ 	{ MODKEY|ShiftMask,             XK_q,      quit,           {0} },
++	// Relative controls
++	{ MODKEY,                       XK_s,      relativeview,   {.i = +1} },
++	{ MODKEY,                       XK_a,      relativeview,   {.i = -1} },
++	{ MODKEY|ShiftMask,             XK_s,      relativemoveview,   {.i = +1} },
++	{ MODKEY|ShiftMask,             XK_a,      relativemoveview,   {.i = -1} },
++	{ MODKEY|ShiftMask,             XK_x,      relativemove,   {.i = +1} },
++	// Different keyboard layouts
++	{ MODKEY|ShiftMask,             XK_y,      relativemove,   {.i = -1} }, 
++	{ MODKEY|ShiftMask,             XK_z,      relativemove,   {.i = -1} },
+ };
+ 
+ /* button definitions */
+diff --git a/dwm.c b/dwm.c
+index 5e4d494..97b1e6d 100644
+--- a/dwm.c
++++ b/dwm.c
+@@ -124,6 +124,7 @@ struct Monitor {
+ 	unsigned int tagset[2];
+ 	int showbar;
+ 	int topbar;
++	int selectedtag;
+ 	Client *clients;
+ 	Client *sel;
+ 	Client *stack;
+@@ -639,6 +640,7 @@ createmon(void)
+ 	m->nmaster = nmaster;
+ 	m->showbar = showbar;
+ 	m->topbar = topbar;
++	m->selectedtag = 1;
+ 	m->lt[0] = &layouts[0];
+ 	m->lt[1] = &layouts[1 % LENGTH(layouts)];
+ 	strncpy(m->ltsymbol, layouts[0].symbol, sizeof m->ltsymbol);
+@@ -1653,16 +1655,17 @@ spawn(const Arg *arg)
+ 	}
+ }
+ 
+-void
+-tag(const Arg *arg)
+-{
+-	if (selmon->sel && arg->ui & TAGMASK) {
+-		selmon->sel->tags = arg->ui & TAGMASK;
+-		focus(NULL);
+-		arrange(selmon);
+-	}
++void 
++tag(const Arg *arg) {
++  int endtag = 1 << arg->ui;
++  if (selmon->sel && endtag & TAGMASK) {
++    selmon->sel->tags = endtag & TAGMASK;
++    focus(NULL);
++    arrange(selmon);
++  }
+ }
+ 
++
+ void
+ tagmon(const Arg *arg)
+ {
+@@ -2035,16 +2038,18 @@ updatewmhints(Client *c)
+ 	}
+ }
+ 
++
+ void
+-view(const Arg *arg)
+-{
+-	if ((arg->ui & TAGMASK) == selmon->tagset[selmon->seltags])
+-		return;
+-	selmon->seltags ^= 1; /* toggle sel tagset */
+-	if (arg->ui & TAGMASK)
+-		selmon->tagset[selmon->seltags] = arg->ui & TAGMASK;
+-	focus(NULL);
+-	arrange(selmon);
++view(const Arg *arg) {
++  int endtag = 1 << arg->ui;
++  if ((endtag & TAGMASK) == selmon->tagset[selmon->seltags])
++    return;
++  selmon->seltags ^= 1; /* toggle sel tagset */
++  if (endtag & TAGMASK)
++    selmon->tagset[selmon->seltags] = endtag & TAGMASK;
++  selmon->selectedtag = arg->ui;
++  focus(NULL);
++  arrange(selmon);
+ }
+ 
+ Client *
+diff --git a/tags.c b/tags.c
+new file mode 100644
+index 0000000..78b7b20
+--- /dev/null
++++ b/tags.c
+@@ -0,0 +1,52 @@
++void relativemove(const Arg *arg) {
++  if (selmon->sel && arg->i) {
++    int endtag = selmon->selectedtag + arg->i;
++    if (endtag < 0 || endtag > LENGTH(tags) - 1)
++      return;
++    selmon->sel->tags = 1 << endtag;
++    focus(NULL);
++    arrange(selmon);
++  }
++}
++
++void relativeview(const Arg *arg) {
++  int newmon = selmon->selectedtag + arg->i;
++  if (newmon < 0 || newmon > LENGTH(tags) - 1)
++    return;
++  int endtag = 1 << newmon;
++  if ((endtag & TAGMASK) == selmon->tagset[selmon->seltags])
++    return;
++  selmon->seltags ^= 1;
++  if (endtag & TAGMASK)
++    selmon->tagset[selmon->seltags] = endtag & TAGMASK;
++  selmon->selectedtag = newmon;
++  focus(NULL);
++  arrange(selmon);
++}
++
++void relativemoveview(const Arg *arg) {
++  if (selmon->sel && arg->i) {
++    int endtag = selmon->selectedtag + arg->i;
++    if (endtag < 0 || endtag > LENGTH(tags) - 1)
++      return;
++    selmon->sel->tags = 1 << endtag;
++  }
++  int newmon = selmon->selectedtag + arg->i;
++  int endtag = 1 << newmon;
++  if (endtag & TAGMASK)
++    selmon->tagset[selmon->seltags] = endtag & TAGMASK;
++  selmon->selectedtag = newmon;
++  focus(NULL);
++  arrange(selmon);
++}
++
++void viewtag(const Arg *arg) {
++  int endtag = 1 << arg->ui;
++  if (selmon->sel && endtag) {
++    selmon->sel->tags = endtag & TAGMASK;
++    selmon->selectedtag = arg->ui;
++    focus(NULL);
++    view(arg);
++    arrange(selmon);
++  }
++}
+\ No newline at end of file
