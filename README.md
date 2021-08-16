@@ -5,7 +5,7 @@ This patch allows [dwm](https://dwm.suckless.org) users to move between their ta
 
 ## Demo
 This patch is part of my personal build of [dwm](https://github.com/misobarisic/dwm).
-![demo](./demo.gif)
+<img alt="YAP" src="https://i.imgur.com/IIUT1CC.gif">
 
 ## Installation
 Place the .diff file in your dwm source folder and run
