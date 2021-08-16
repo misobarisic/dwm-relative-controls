@@ -17,7 +17,6 @@ index a2ac963..5e7ca5b 100644
 -	{ MODKEY|ControlMask|ShiftMask, KEY,      toggletag,      {.ui = 1 << TAG} },
 +	{ MODKEY,                       KEY,      view,           {.ui = TAG} }, \
 +	{ MODKEY|ShiftMask,             KEY,      tag,            {.ui = TAG} }, \
-+	{ MODKEY|ControlMask,           KEY,      viewtag,        {.ui = TAG} }, 
  
  /* helper for spawning shell commands in the pre dwm-5.0 fashion */
  #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
